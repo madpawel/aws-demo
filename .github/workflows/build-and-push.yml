@@ -8,8 +8,9 @@ permissions:
   contents: read
 
 env:
-  AWS_REGION: eu-central-1
-  ECR_REPOSITORY: app
+  AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+  ECR_REPOSITORY_INPUT: ${{ vars.ECR_REPOSITORY || 'app' }}
+  CF_DISTRIBUTION_ID: ${{ vars.CF_DISTRIBUTION_ID }}
 
 jobs:
   build-and-push:
@@ -29,6 +30,25 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Normalize ECR repository input
+        id: normalize
+        shell: bash
+        run: |
+          set -euo pipefail
+          input="${ECR_REPOSITORY_INPUT}"
+          # If full ECR URL provided, extract the repository path; else use as-is
+          if echo "$input" | grep -q "\.amazonaws\.com"; then
+            repo_path="${input#*.amazonaws.com/}"
+            if [ "$repo_path" = "$input" ] || [ -z "$repo_path" ]; then
+              repo_path="app"
+            fi
+            echo "ECR_REPOSITORY=$repo_path" >> "$GITHUB_ENV"
+            echo "ecr_repository=$repo_path" >> "$GITHUB_OUTPUT"
+          else
+            echo "ECR_REPOSITORY=$input" >> "$GITHUB_ENV"
+            echo "ecr_repository=$input" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Ensure ECR repository exists
         run: |
           aws ecr describe-repositories --repository-names "$ECR_REPOSITORY" >/dev/null 2>&1 || \
@@ -41,7 +61,12 @@ jobs:
           file: ./app/Dockerfile
           push: true
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ steps.normalize.outputs.ecr_repository }}:latest
+            ${{ steps.login-ecr.outputs.registry }}/${{ steps.normalize.outputs.ecr_repository }}:${{ github.sha }}
 
-
+      - name: Invalidate CloudFront (optional)
+        if: ${{ env.CF_DISTRIBUTION_ID != '' }}
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "$CF_DISTRIBUTION_ID" \
+            --paths "/*"
