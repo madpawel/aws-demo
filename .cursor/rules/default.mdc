@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+
+- if .env file is presnet in the repository always source the contnet to the agent
