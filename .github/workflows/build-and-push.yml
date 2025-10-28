@@ -77,8 +77,8 @@ jobs:
           file: ./app/Dockerfile
           push: true
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ steps.normalize.outputs.ecr_repository }}:latest
             ${{ steps.login-ecr.outputs.registry }}/${{ steps.normalize.outputs.ecr_repository }}:${{ github.sha }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ steps.normalize.outputs.ecr_repository }}:${{ github.sha_short }}
 
       - name: Invalidate CloudFront (optional)
         if: ${{ env.CF_DISTRIBUTION_ID != '' && steps.check.outputs.should_build == 'true' }}
